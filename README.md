@@ -1,2 +1,2 @@
 # Class-Augmenter
-Code for Localized Generation of Classes.
+Code for the paper **Localized Generation of Classes**.
