@@ -11,6 +11,8 @@ data = DR.DatasetReader(image_path=img_path, label_path=lbl_path)
 os.mkdir('Signs')
 count = 0
 
+min_h, min_w = 50, 50
+
 def split_data(lower, upper, class_value):
     global count
     for i in xrange(lower, upper):
@@ -22,7 +24,7 @@ def split_data(lower, upper, class_value):
         _, contours, _ = cv2.findContours(mask, 1, 2)
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
-            if w > 50 and h > 50:
+            if w > min_w and h > min_h:
                 class_ix = image[y:y+h, x:x+w]
                 count += 1
                 cv2.imwrite('./Signs/Sign' + str(count) + '.png', class_ix)
