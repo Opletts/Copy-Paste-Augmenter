@@ -5,9 +5,6 @@ def threshold(image, label, value):
     if type(value[0]) == int:
         mask = cv2.inRange(label, value, value)
         placement = cv2.bitwise_and(image, image, mask=mask)
-
-        return np.where(placement[:, :, 0] != 0)
-
     else:
         mask = 0
         for i in value:
@@ -15,7 +12,7 @@ def threshold(image, label, value):
 
         placement = cv2.bitwise_and(image, image, mask=mask)
 
-        return np.where(placement[:, :, 0] != 0)
+    return np.where(placement[:, :, 0] != 0)
 
 def hist_match(source, template):
 	oldshape = source.shape
