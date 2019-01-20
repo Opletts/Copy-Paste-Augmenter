@@ -34,15 +34,26 @@ def hist_match(source, template):
 
 	return interp_t_values[bin_idx].reshape(oldshape)
 
-def blend(roi, sign):
-    gray = cv2.cvtColor(sign, cv2.COLOR_BGR2GRAY)
+def blend(roi, class_img):
+    gray = cv2.cvtColor(class_img, cv2.COLOR_BGR2GRAY)
     _, mask = cv2.threshold(gray, 5, 255, cv2.THRESH_BINARY)
     mask_inv = cv2.bitwise_not(mask)
 
-    sign = hist_match(sign, roi)
+    class_img = smooth_edges(class_img, mask)
+    class_img = hist_match(class_img, roi)
 
     bg = cv2.bitwise_and(roi, roi, mask=mask_inv)
-    fg = cv2.bitwise_and(sign, sign, mask=mask)
+    fg = cv2.bitwise_and(class_img, class_img, mask=mask)
     dst = bg + fg
+
+    return dst
+
+def smooth_edges(dst, mask):
+    temp = dst.copy()
+    edge = cv2.Canny(mask, 50, 150, 3)
+    kernel = np.ones((5, 5), np.uint8)
+    dilated = cv2.dilate(edge, kernel, iterations=1)
+    blurred = cv2.GaussianBlur(temp, (7, 7), 0)
+    dst[np.where(dilated != 0)] = blurred[np.where(dilated != 0)]
 
     return dst
