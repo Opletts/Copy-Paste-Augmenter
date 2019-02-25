@@ -37,14 +37,15 @@ def blend(roi, class_img, hist_template, flag=1):
     mask_inv = cv2.bitwise_not(mask)
 
     if flag:
-        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8,8))
-        roi_lab = cv2.cvtColor(hist_template, cv2.COLOR_BGR2LAB)
-        roi_l, roi_a, roi_b = cv2.split(roi_lab)
-        roi_l = clahe.apply(roi_l)
-        roi_lab = cv2.merge((roi_l, roi_a, roi_b))
-        roi_cpy = cv2.cvtColor(roi_lab, cv2.COLOR_LAB2BGR)
+        ## Histogram matching on L channel in LAB colorspace
+        # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4,4))
+        # roi_lab = cv2.cvtColor(hist_template, cv2.COLOR_BGR2LAB)
+        # roi_l, roi_a, roi_b = cv2.split(roi_lab)
+        # roi_l = clahe.apply(roi_l)
+        # roi_lab = cv2.merge((roi_l, roi_a, roi_b))
+        # roi_cpy = cv2.cvtColor(roi_lab, cv2.COLOR_LAB2BGR)
 
-        class_img = hist_match(class_img, roi_cpy)
+        class_img = hist_match(class_img, hist_template)
 
     bg = cv2.bitwise_and(roi, roi, mask=mask_inv)
     fg = cv2.bitwise_and(class_img, class_img, mask=mask)
