@@ -22,6 +22,24 @@ class SignAugmenter(BA.BaseAugmenter):
         all_poles = os.listdir('./Poles')
         pole = cv2.imread(os.path.join('./Poles', random.choice(all_poles)))
 
+        ## SAMPLE
+        ## If scaling for this different and needs to be calculated
+        #
+        # self.max_height = int(self.rows * 0.6)
+        # self.triangle_init()
+        # init_scale = float(self.max_height) / class_height
+        # scaled_class_width = int(class_width * init_scale * ratio)
+        # scaled_class_height = int(self.max_height * ratio)
+        # min_px = 20
+        # if scaled_class_height < min_px:
+        #     continue
+        # scaled_class_width -= 1 if scaled_class_width % 2 == 0 else 0
+        # scaled_class_img = cv2.resize(class_img, (scaled_class_width, scaled_class_height), interpolation=cv2.INTER_CUBIC)
+
+        ## RESET scaling values for og class if scaling is changed 
+        # self.max_height = int(self.rows * 0.4)
+        # self.triangle_init
+
         pole_height = int(1.5 * scaled_class_height)
         pole_width = int(0.1 * scaled_class_width)
         pole_width -= 1 if pole_width % 2 == 0 else 0
