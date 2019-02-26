@@ -22,10 +22,7 @@ class BaseAugmenter(object):
         self.col_value = self.col_value[self.row_value - self.max_height > 0]
         self.row_value = self.row_value[self.row_value - self.max_height > 0]
 
-        self.main_traingle_side = np.sqrt(np.power(self.max_height - self.rows, 2) + np.power(self.cols/2, 2))
-        self.slope = float(self.max_height - self.rows) / (self.cols / 2)
-        self.c_intercept = self.rows
-
+        self.triangle_init()
         ## For random placement of signs
         # self.row_value = range(self.rows)
         # self.col_value = range(self.cols)
@@ -134,14 +131,9 @@ class BaseAugmenter(object):
 
             scaled_class_img = cv2.resize(class_img, (scaled_class_width, scaled_class_height), interpolation=cv2.INTER_CUBIC)
 
-            extra_class = self.place_extra_class(x, y, scaled_class_img)
+            class_err_code = self.place_extra_class(x, y, scaled_class_img)
 
-            if extra_class == None:
-                class_err_code = self.create_roi(x, y, scaled_class_img)
-                if class_err_code:
-                    continue
-
-            elif extra_class == 1:
+            if class_err_code == 1:
                 continue
 
             num_class -= 1
@@ -151,4 +143,8 @@ class BaseAugmenter(object):
     def place_extra_class(self, x, y, scaled_class_img):
         """Function to be overloaded"""
 
-        pass
+        class_err_code = self.create_roi(x, y, scaled_class_img)
+        if class_err_code:
+            return 1
+
+        return 0
