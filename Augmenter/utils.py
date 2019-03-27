@@ -36,7 +36,7 @@ def blend(roi, class_img, hist_template, flag=1):
     _, mask = cv2.threshold(gray, 5, 255, cv2.THRESH_BINARY)
     mask_inv = cv2.bitwise_not(mask)
 
-    if flag:
+    # if flag:
         ## Histogram matching on L channel in LAB colorspace
         # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4,4))
         # roi_lab = cv2.cvtColor(hist_template, cv2.COLOR_BGR2LAB)
@@ -44,14 +44,21 @@ def blend(roi, class_img, hist_template, flag=1):
         # roi_l = clahe.apply(roi_l)
         # roi_lab = cv2.merge((roi_l, roi_a, roi_b))
         # roi_cpy = cv2.cvtColor(roi_lab, cv2.COLOR_LAB2BGR)
+        # class_img = np.uint8(hist_match(class_img, hist_template))
 
-        class_img = hist_match(class_img, hist_template)
+    if flag:
+        h, w = mask.shape
+        center = (w // 2, h // 2)
+        dst = cv2.seamlessClone(class_img, roi, mask, center, cv2.NORMAL_CLONE)
+        output = cv2.addWeighted(dst, 0.3, class_img, 0.7, 0)
+        output[np.where(mask_inv != 0)] = roi[np.where(mask_inv != 0)]
+        return output
 
-    bg = cv2.bitwise_and(roi, roi, mask=mask_inv)
-    fg = cv2.bitwise_and(class_img, class_img, mask=mask)
-    dst = bg + fg
-
-    return dst
+    else:
+        bg = cv2.bitwise_and(roi, roi, mask=mask_inv)
+        fg = cv2.bitwise_and(class_img, class_img, mask=mask)
+        dst = bg + fg
+        return dst
 
 def smooth_edges(dst, mask):
     temp = dst.copy()
