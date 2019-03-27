@@ -8,7 +8,7 @@ from Augmenter import utils
 class BaseAugmenter(object):
     """Parent class for all object types in the image that can be augmented"""
 
-    def __init__(self, image, label, class_id, placement_id):
+    def __init__(self, image, label, class_id, placement_id=None):
         self.image = image.copy()
         self.label = label.copy()
 
@@ -16,42 +16,66 @@ class BaseAugmenter(object):
         self.label_copy = label.copy()
 
         self.class_id = class_id
-        self.fake_class_id = [i+1 for i in list(class_id)]
+        self.fake_class_id = [i+1 for i in class_id]
 
-        self.row_value, self.col_value = utils.threshold(image, label, placement_id)
-        self.col_value = self.col_value[self.row_value - self.max_height > 0]
-        self.row_value = self.row_value[self.row_value - self.max_height > 0]
+        ## For random placement of object class
+        self.placement_id = placement_id
 
-        self.triangle_init()
-        ## For random placement of signs
-        # self.row_value = range(self.rows)
-        # self.col_value = range(self.cols)
+        if placement_id != None:
+            self.row_value, self.col_value = utils.threshold(image, label, placement_id)
+            self.col_value = self.col_value[self.row_value - self.horizon_line > 0]
+            self.row_value = self.row_value[self.row_value - self.horizon_line > 0]
+
+            self.triangle_init()
+
+        else:
+            self.row_value = range(self.rows)
+            self.col_value = range(self.cols)
 
         self.class_placement = []
         self.get_class_pos(self.class_id)
+
+    def triangle_init(self):
+        self.main_traingle_side = np.sqrt(np.power(self.horizon_line - self.rows, 2) + np.power(self.cols/2, 2))
+        self.slope = float(self.horizon_line - self.rows) / (self.cols / 2)
+        self.c_intercept = self.rows
 
     def reset(self):
         self.image = self.image_copy.copy()
         self.label = self.label_copy.copy()
 
-    def scale(self, x, y, sigma):
-        x_intersect = (y - self.c_intercept) / self.slope
-        cur_triangle_side = np.sqrt(np.power(self.max_height - y, 2) + np.power(self.cols/2 - x_intersect, 2))
-        ratio = cur_triangle_side / (self.main_traingle_side + sigma)
+    def scale(self, x, y, class_img):
+        ## Regularizing term
+        sigma = 20
 
-        ## Random scaling of signs
-        # ratio = random.random()
-        return ratio
+        ## Random scaling of object class if None
+        if self.placement_id != None:
+            x_intersect = (y - self.c_intercept) / self.slope
+            cur_triangle_side = np.sqrt(np.power(self.horizon_line - y, 2) + np.power(self.cols/2 - x_intersect, 2))
+            ratio = cur_triangle_side / (self.main_traingle_side + sigma)
+
+        else:
+            ratio = random.random()
+
+        class_height, class_width, _ = class_img.shape
+
+        init_scale = float(self.max_height) / class_height
+
+        scaled_class_width = int(class_width * init_scale * ratio)
+        scaled_class_height = int(self.max_height * ratio)
+
+        return scaled_class_width, scaled_class_height
 
     def viz_scaling_triangle(self, img):
-        triangle = np.array([[0, self.rows], [self.cols/2, self.max_height], [self.cols, self.rows]], np.int32)
+        triangle = np.array([[0, self.rows], [self.cols/2, self.horizon_line], [self.cols, self.rows]], np.int32)
         temp = img.copy()
         cv2.fillConvexPoly(temp, triangle, (255, 255, 0))
         cv2.addWeighted(temp, 0.3, img, 0.7, 0, temp)
 
         return temp
 
-    def create_roi(self, x, y, class_img, y_displacement=0, extra_class_id=0):
+    ## flag enables / disables poisson blending, default ON
+    def create_roi(self, x, y, class_img, y_displacement=0, extra_class_id=0, flag=1):
         height, width, _ = class_img.shape
         roi_x_start = x - width // 2
         roi_x_end = x + 1 + width // 2
@@ -61,6 +85,7 @@ class BaseAugmenter(object):
 
         ## Padding around the roi for blurring the edges of the class image properly
         padding = 10
+
         pad_roi = self.image[y-height-padding:y+padding, roi_x_start-padding:roi_x_end+padding]
         pad_class_img = np.uint8(np.zeros((height+2*padding, width+2*padding, 3)))
         pad_class_img[padding:padding+height, padding:padding+width] = class_img
@@ -81,9 +106,10 @@ class BaseAugmenter(object):
                 roi_label[np.where(class_img[:, :, 0] > 10)] = extra_class_id
 
             hist_template = self.image[y-height:y+y_displacement, roi_x_start:roi_x_end]
-            roi = utils.blend(roi, class_img, hist_template, 1)
 
-            self.image[y-height:y, roi_x_start:roi_x_end] = roi
+            roi = utils.blend(pad_roi, pad_class_img, hist_template, flag)
+
+            self.image[y-height-padding:y+padding, roi_x_start-padding:roi_x_end+padding] = roi
 
             utils.smooth_edges(pad_roi, pad_class_img)
             return 0
@@ -100,6 +126,9 @@ class BaseAugmenter(object):
             self.class_placement.append([x, y, x+w, y+h, 1])
 
     def place_class(self, num_class, path):
+        updated_img = self.image.copy()
+        updated_lbl = self.label.copy()
+
         while num_class != 0 and len(self.row_value):
             all_class_imgs = os.listdir(path)
             class_img = cv2.imread(os.path.join(path, random.choice(all_class_imgs)))
@@ -113,13 +142,7 @@ class BaseAugmenter(object):
             self.col_value = np.delete(self.col_value, index)
 
             ## Calculate ratio and scale the class image
-            sigma = 20
-            ratio = self.scale(x, y, sigma)
-
-            init_scale = float(self.max_height) / class_height
-
-            scaled_class_width = int(class_width * init_scale * ratio)
-            scaled_class_height = int(self.max_height * ratio)
+            scaled_class_width, scaled_class_height = self.scale(x, y, class_img)
 
             ## Should be atleast 20 px tall
             min_px = 20
@@ -134,8 +157,12 @@ class BaseAugmenter(object):
             class_err_code = self.place_extra_class(x, y, scaled_class_img)
 
             if class_err_code == 1:
+                self.image = updated_img.copy()
+                self.label = updated_lbl.copy()
                 continue
 
+            updated_img = self.image.copy()
+            updated_lbl = self.label.copy()
             num_class -= 1
 
         return self.image, self.label
