@@ -2,13 +2,16 @@ import os
 import cv2
 import random
 import numpy as np
-import imgaug as ia
 from Augmenter import utils
 
 class BaseAugmenter(object):
     """Parent class for all object types in the image that can be augmented"""
 
     def __init__(self, image, label, class_id, placement_id=None):
+        self.called = 0
+        self.limits = None
+        self.counter = 0
+
         self.image = image.copy()
         self.label = label.copy()
 
@@ -16,7 +19,7 @@ class BaseAugmenter(object):
         self.label_copy = label.copy()
 
         self.class_id = class_id
-        self.fake_class_id = [i+1 for i in class_id]
+        self.fake_class_id = [i if i == 255 else i+1 for i in class_id]
 
         ## For random placement of object class
         self.placement_id = placement_id
@@ -32,8 +35,10 @@ class BaseAugmenter(object):
             self.row_value = range(self.rows)
             self.col_value = range(self.cols)
 
-        self.class_placement = []
-        self.get_class_pos(self.class_id)
+        self.copy_row_value = self.row_value
+        self.copy_col_value = self.col_value
+
+        self.class_placement = utils.get_class_pos(self.label, self.class_id)
 
     def triangle_init(self):
         self.main_traingle_side = np.sqrt(np.power(self.horizon_line - self.rows, 2) + np.power(self.cols/2, 2))
@@ -44,14 +49,43 @@ class BaseAugmenter(object):
         self.image = self.image_copy.copy()
         self.label = self.label_copy.copy()
 
+    def set_limit(self, limit, color=None):
+        """Function to filter the placement array to constrain the number of
+        augmented pixels per image.
+        range = (lower_percent, higher_percent)
+                 percentage of the total image height requested
+        """
+        self.limits = limit
+
+        sigma = 0
+        self.col_value = self.copy_col_value
+        self.row_value = self.copy_row_value
+
+        min_scaled_class_height, max_scaled_class_height = np.array(limit) * self.rows
+
+        min_ratio = float(min_scaled_class_height) / self.max_height
+        max_ratio = float(max_scaled_class_height) / self.max_height
+
+        min_cur_triangle_side = min_ratio * (self.main_traingle_side + sigma)
+        max_cur_triangle_side = max_ratio * (self.main_traingle_side + sigma)
+
+        y_min = (min_cur_triangle_side * (self.rows - self.horizon_line) /
+             self.main_traingle_side + self.horizon_line)
+
+        y_max = (max_cur_triangle_side * (self.rows - self.horizon_line) /
+             self.main_traingle_side + self.horizon_line)
+
+        self.col_value = self.col_value[np.logical_and(self.row_value > y_min, self.row_value < y_max)]
+        self.row_value = self.row_value[np.logical_and(self.row_value > y_min, self.row_value < y_max)]
+
     def scale(self, x, y, class_img):
         ## Regularizing term
-        sigma = 20
+        sigma = 0
 
         ## Random scaling of object class if None
         if self.placement_id != None:
             x_intersect = (y - self.c_intercept) / self.slope
-            cur_triangle_side = np.sqrt(np.power(self.horizon_line - y, 2) + np.power(self.cols/2 - x_intersect, 2))
+            cur_triangle_side = np.sqrt(np.power(self.horizon_line - y, 2) + np.power(self.cols / 2 - x_intersect, 2))
             ratio = cur_triangle_side / (self.main_traingle_side + sigma)
 
         else:
@@ -66,66 +100,50 @@ class BaseAugmenter(object):
 
         return scaled_class_width, scaled_class_height
 
-    def viz_scaling_triangle(self, img):
-        triangle = np.array([[0, self.rows], [self.cols/2, self.horizon_line], [self.cols, self.rows]], np.int32)
-        temp = img.copy()
-        cv2.fillConvexPoly(temp, triangle, (255, 255, 0))
-        cv2.addWeighted(temp, 0.3, img, 0.7, 0, temp)
-
-        return temp
-
     ## flag enables / disables poisson blending, default ON
     def create_roi(self, x, y, class_img, y_displacement=0, extra_class_id=0, flag=1):
         height, width, _ = class_img.shape
         roi_x_start = x - width // 2
         roi_x_end = x + 1 + width // 2
 
-        roi = self.image[y-height:y, roi_x_start:roi_x_end]
-        roi_label = self.label[y-height:y, roi_x_start:roi_x_end]
+        x1, y1, x2, y2 = roi_x_start, y-height, roi_x_end, y
+
+        roi = self.image[y1:y2, x1:x2]
+        roi_label = self.label[y1:y2, x1:x2]
 
         ## Padding around the roi for blurring the edges of the class image properly
         padding = 10
 
-        pad_roi = self.image[y-height-padding:y+padding, roi_x_start-padding:roi_x_end+padding]
+        pad_roi = self.image[y1-padding:y2+padding, x1-padding:x2+padding]
         pad_class_img = np.uint8(np.zeros((height+2*padding, width+2*padding, 3)))
         pad_class_img[padding:padding+height, padding:padding+width] = class_img
 
-        bb_curr = ia.BoundingBox(x1=roi_x_start, y1=y-height, x2=roi_x_end, y2=y)
-
         if roi.shape == (height, width, 3) and pad_class_img.shape == pad_roi.shape:
-            for i in self.class_placement:
-                bb_i = ia.BoundingBox(x1=i[0], y1=i[1], x2=i[2], y2=i[3])
-                iou = bb_curr.iou(bb_i)
-                if iou:
+            for a1, b1, a2, b2, _ in self.class_placement:
+                iou = utils.get_iou([x1, y1, x2, y2], [a1, b1, a2, b2])
+                if iou > 0.4:
                     return 1
 
-            self.class_placement.append([roi_x_start, y-height, roi_x_end, y, 0])
+            self.class_placement.append([x1, y1, x2, y2, 0])
             if extra_class_id == 0:
-                roi_label[np.where(class_img[:, :, 0] > 10)] = self.fake_class_id
+                roi_label[np.where(class_img[:, :, 0] != 0)] = self.fake_class_id
             else:
                 roi_label[np.where(class_img[:, :, 0] > 10)] = extra_class_id
 
-            hist_template = self.image[y-height:y+y_displacement, roi_x_start:roi_x_end]
-
+            hist_template = self.image[y1:y2+y_displacement, x1:x2]
             roi = utils.blend(pad_roi, pad_class_img, hist_template, flag)
 
-            self.image[y-height-padding:y+padding, roi_x_start-padding:roi_x_end+padding] = roi
-
+            self.image[y1-padding:y2+padding, x1-padding:x2+padding] = roi
             utils.smooth_edges(pad_roi, pad_class_img)
+
             return 0
 
         else:
             return 1
 
-    def get_class_pos(self, class_id):
-        mask = cv2.inRange(self.label, class_id, class_id)
-        _, contours, _ = cv2.findContours(mask, 1, 2)
-
-        for contour in contours:
-            x, y, w, h = cv2.boundingRect(contour)
-            self.class_placement.append([x, y, x+w, y+h, 1])
-
     def place_class(self, num_class, path):
+        self.called += 1
+
         updated_img = self.image.copy()
         updated_lbl = self.label.copy()
 
@@ -145,14 +163,15 @@ class BaseAugmenter(object):
             scaled_class_width, scaled_class_height = self.scale(x, y, class_img)
 
             ## Should be atleast 20 px tall
-            min_px = 20
+            min_px = 10
             if scaled_class_height < min_px:
                 continue
 
             ## Width needs to be odd for equal splitting about mid point
             scaled_class_width -= 1 if scaled_class_width % 2 == 0 else 0
 
-            scaled_class_img = cv2.resize(class_img, (scaled_class_width, scaled_class_height), interpolation=cv2.INTER_CUBIC)
+            scaled_class_img = cv2.resize(class_img, (scaled_class_width, scaled_class_height),
+                                            interpolation=cv2.INTER_CUBIC)
 
             class_err_code = self.place_extra_class(x, y, scaled_class_img)
 
@@ -164,6 +183,19 @@ class BaseAugmenter(object):
             updated_img = self.image.copy()
             updated_lbl = self.label.copy()
             num_class -= 1
+            self.counter = 1
+
+        if self.limits != None and len(self.copy_row_value) and num_class != 0:
+            diff = self.limits[1] - self.limits[0]
+            lower_limit = round(self.limits[0] - diff, 1)
+            upper_limit = self.limits[0]
+
+            if lower_limit < 0:
+                lower_limit = 0.0
+
+            if upper_limit != 0:
+                self.set_limit((lower_limit, upper_limit))
+                self.place_class(num_class, path)
 
         return self.image, self.label
 
