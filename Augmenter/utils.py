@@ -49,6 +49,8 @@ def blend(roi, class_img, hist_template, flag=1):
     if flag:
         h, w = mask.shape
         center = (w // 2, h // 2)
+
+        # if width = 1, C++ error in seamlessClone
         dst = cv2.seamlessClone(class_img, roi, mask, center, cv2.NORMAL_CLONE)
         output = cv2.addWeighted(dst, 0.3, class_img, 0.7, 0)
         output[np.where(mask_inv != 0)] = roi[np.where(mask_inv != 0)]
@@ -69,3 +71,60 @@ def smooth_edges(dst, mask):
     dilated = cv2.dilate(edge, kernel, iterations=1)
     blurred = cv2.GaussianBlur(temp, (5, 5), 0)
     dst[np.where(dilated != 0)] = blurred[np.where(dilated != 0)]
+
+def get_iou(bb1, bb2):
+    x1, y1, x2, y2 = bb1
+    a1, b1, a2, b2 = bb2
+
+    x_left  = max(x1, a1)
+    y_top   = max(y1, b1)
+    x_right = min(x2, a2)
+    y_bot   = min(y2, b2)
+
+    if x_right < x_left or y_bot < y_top:
+        return 0.0
+
+    intersection_area = (x_right - x_left + 1) * (y_bot - y_top + 1)
+
+    bb1_area = (x2 - x1 + 1) * (y2 - y1 + 1)
+    bb2_area = (a2 - a1 + 1) * (b2 - b1 + 1)
+
+    iou = intersection_area / float(bb1_area + bb2_area - intersection_area)
+    return iou
+
+def get_class_pos(label, class_id):
+    mask = cv2.inRange(label, class_id, class_id)
+    contours, _ = cv2.findContours(mask, 1, 2)
+
+    class_placement = []
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        class_placement.append([x, y, x+w, y+h, 1])
+
+    deletions = []
+    for x1, y1, x2, y2, _ in class_placement:
+        for a, b, c, d, _ in class_placement:
+            if x1 > a and y1 > b and x2 < c and y2 < d:
+                deletions.append([x1, y1, x2, y2, 1])
+                break
+
+    class_placement = [x for x in class_placement if x not in deletions]
+
+    return class_placement
+
+def viz_scaling_triangle(aug_obj):
+    triangle = np.array([[0, aug_obj.rows], [aug_obj.cols/2, aug_obj.horizon_line],
+                        [aug_obj.cols, aug_obj.rows]], np.int32)
+    temp = aug_obj.image.copy()
+    cv2.fillConvexPoly(temp, triangle, (255, 255, 0))
+    cv2.addWeighted(temp, 0.3, aug_obj.image, 0.7, 0, temp)
+
+    return temp
+
+def viz_placement(aug_obj):
+    temp = aug_obj.image.copy()
+    color = np.random.choice(range(256), size=3)
+    color = tuple([int(x) for x in color])
+    [cv2.circle(temp, (x, y), 5, color) for x, y in zip(aug_obj.col_value, aug_obj.row_value)]
+
+    return temp
