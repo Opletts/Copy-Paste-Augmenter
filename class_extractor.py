@@ -25,6 +25,7 @@ for i in range(len(data)):
     height, width, _ = image.shape
 
     mask = cv2.inRange(label, class_id, class_id)
+    image = cv2.bitwise_and(image, image, mask=mask)
     contours, _ = cv2.findContours(mask, 1, 2)
 
     instances = []
@@ -64,9 +65,9 @@ for i in range(len(data)):
             class_ix = image[y1:y2, x1:x2]
             count += 1
 
-            ## Saved as person/person{1,2,3..}.png
+            # Saved as person/person{1,2,3..}.png
             cv2.imwrite(object_name + '/' + object_name + str(count) + '.png', class_ix)
 
-            ## Uncomment to display the classes that are being saved.
-            cv2.imshow("test", class_ix)
-            cv2.waitKey(0)
+            # Uncomment to display the classes that are being saved.
+            # cv2.imshow("test", class_ix)
+            # cv2.waitKey(0)
