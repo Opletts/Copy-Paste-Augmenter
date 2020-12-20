@@ -35,5 +35,5 @@ for i in range(len(data)):
     cv2.imshow("image", cv2.resize(img, (1024, 512)))
     cv2.imshow("label", cv2.resize(lbl, (1024, 512)))
     cv2.imshow("placement", cv2.resize(utils.viz_placement(aug), (1024, 512)))
-    cv2.imshow("scaling_traingle", cv2.resize(utils.viz_scaling_triangle(aug), (1024, 512)))
+    cv2.imshow("scaling_triangle", cv2.resize(utils.viz_scaling_triangle(aug), (1024, 512)))
     cv2.waitKey(0)

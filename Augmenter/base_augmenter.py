@@ -11,7 +11,7 @@ class BaseAugmenter(object):
     """
 
     def __init__(self, image, label, class_id, placement_id=None, horizon_line=None,
-                 max_height=None, sigma=0, max_iou=0.4, padding=10, min_px=10):
+                 max_height=None, max_iou=0.4, padding=10, min_px=10, sigma=0):
         """
         Constructor
 
@@ -21,6 +21,10 @@ class BaseAugmenter(object):
         placement_id: possible locations for the object to be placed
         horizon_line: location of the horizon for scaling accurately
         max_height: size of the object if it were copied in an area closest to the camera
+        max_iou: maximum overlap allowed between objects of same class
+        padding: padding applied around roi for optimal blurring
+        min_px: number of pixels tall the scaled object should be to consider it a valid copy paste
+        sigma: increase/decrease the value to decrease/increase the scaling ratio
         """
 
         self.called = 0
@@ -51,14 +55,8 @@ class BaseAugmenter(object):
             self.row_value, self.col_value = utils.threshold(image, label, placement_id)
 
         else:
-            self.row_value, self.col_value = [], []
-            for i in range(self.rows):
-                for j in range(self.cols):
-                    self.row_value.append(i)
-                    self.col_value.append(j)
-
-            self.row_value = np.array(self.row_value)
-            self.col_value = np.array(self.col_value)
+            self.row_value, self.col_value = np.mgrid[0:len(range(self.rows)), 0:len(range(self.cols))]
+            self.row_value, self.col_value = self.row_value.ravel(), self.col_value()
 
         if self.horizon_line is not None:
             self.col_value = self.col_value[self.row_value - self.horizon_line > 0]
